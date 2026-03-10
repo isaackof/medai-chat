@@ -170,7 +170,7 @@
 <header>
   <div class="logo">🩺</div>
   <div>
-    <h1>MedAI Assistant <span>• llama3.2:3b</span></h1>
+    <h1>MedAI Assistant <span>• llama-3.3-70b</span></h1>
   </div>
 </header>
 
@@ -195,8 +195,8 @@
 </div>
 
 <script>
-  const OLLAMA_URL = "https://ollama-production-aa17.up.railway.app";
-  const MODEL = "llama3.2:3b";
+  const GROQ_API_KEY = "gsk_s5x2mejb8TtC7YFcUpOEMaQKZttjPLoBrAt84hM";
+  const MODEL = "llama-3.3-70b-versatile";
   const SYSTEM = `Você é um assistente médico especializado em farmacologia, prescrições e protocolos clínicos brasileiros.
 Responda sempre em português brasileiro, de forma técnica mas clara.
 Cite doses, vias de administração e contraindicações quando relevante.
@@ -205,7 +205,7 @@ Sempre recomende confirmação com diretrizes do CFM para uso clínico real.`;
   const chat = document.getElementById("chat");
   const input = document.getElementById("msg-input");
   const btn = document.getElementById("send-btn");
-  const history = [{ role: "system", content: SYSTEM }];
+  const history = [];
 
   input.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -222,7 +222,7 @@ Sempre recomende confirmação com diretrizes do CFM para uso clínico real.`;
     div.className = `msg ${role === "user" ? "user" : "ai"}`;
     div.innerHTML = `
       <div class="avatar">${role === "user" ? "👤" : "🩺"}</div>
-      <div class="bubble" id="bubble-${Date.now()}">${text}</div>`;
+      <div class="bubble">${text}</div>`;
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
     return div.querySelector(".bubble");
@@ -250,10 +250,20 @@ Sempre recomende confirmação com diretrizes do CFM para uso clínico real.`;
     const typing = addTyping();
 
     try {
-      const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: MODEL, messages: history, stream: true })
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${GROQ_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [
+            { role: "system", content: SYSTEM },
+            ...history
+          ],
+          stream: true
+        })
       });
 
       typing.remove();
@@ -268,14 +278,19 @@ Sempre recomende confirmação com diretrizes do CFM para uso clínico real.`;
         if (done) break;
         const lines = decoder.decode(value).split("\n").filter(Boolean);
         for (const line of lines) {
-          try {
-            const json = JSON.parse(line);
-            if (json.message?.content) {
-              full += json.message.content;
-              bubble.textContent = full;
-              chat.scrollTop = chat.scrollHeight;
-            }
-          } catch {}
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6).trim();
+            if (data === "[DONE]") continue;
+            try {
+              const json = JSON.parse(data);
+              const delta = json.choices?.[0]?.delta?.content;
+              if (delta) {
+                full += delta;
+                bubble.textContent = full;
+                chat.scrollTop = chat.scrollHeight;
+              }
+            } catch {}
+          }
         }
       }
 
@@ -283,7 +298,7 @@ Sempre recomende confirmação com diretrizes do CFM para uso clínico real.`;
 
     } catch (err) {
       typing.remove();
-      addMsg("ai", "⚠️ Erro ao conectar com o servidor. Verifique se o modelo foi baixado.");
+      addMsg("ai", "⚠️ Erro ao conectar com a API Groq. Verifique sua chave de API.");
     }
 
     btn.disabled = false;
